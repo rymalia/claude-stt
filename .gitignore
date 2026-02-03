@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+.python-version
 *.py[cod]
 *$py.class
 *.so
@@ -82,3 +83,4 @@ temp/
 # ralph
 .agents/
 .ralph/
+
