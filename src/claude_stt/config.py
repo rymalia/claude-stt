@@ -48,6 +48,9 @@ class Config:
     # Feedback settings
     sound_effects: bool = True
 
+    # UI settings (macOS only)
+    menu_bar: bool = True  # Show menu bar icon when available
+
     @classmethod
     def get_config_dir(cls) -> Path:
         """Get the configuration directory path."""
@@ -103,6 +106,7 @@ class Config:
                 audio_device=stt_config.get("audio_device", cls.audio_device),
                 output_mode=stt_config.get("output_mode", cls.output_mode),
                 sound_effects=stt_config.get("sound_effects", cls.sound_effects),
+                menu_bar=stt_config.get("menu_bar", cls.menu_bar),
             )
             config = config.validate()
             if legacy_path and tomli_w is not None:
@@ -140,6 +144,7 @@ class Config:
                 "audio_device": self.audio_device,
                 "output_mode": self.output_mode,
                 "sound_effects": self.sound_effects,
+                "menu_bar": self.menu_bar,
             }
         }
 
@@ -227,7 +232,35 @@ class Config:
             logger.warning("sample_rate %s not supported; forcing 16000", self.sample_rate)
             self.sample_rate = 16000
 
+        if not isinstance(self.menu_bar, bool):
+            if isinstance(self.menu_bar, str):
+                self.menu_bar = self.menu_bar.strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                )
+            else:
+                self.menu_bar = bool(self.menu_bar)
+
         return self
+
+    def effective_menu_bar(self) -> bool:
+        """Check if menu bar should be shown.
+
+        Returns True only if:
+        - menu_bar config is True
+        - Running on macOS
+        - rumps is available
+        """
+        if not self.menu_bar:
+            return False
+        try:
+            from .platform import menubar_available
+
+            return menubar_available()
+        except ImportError:
+            return False
 
 
 def get_platform() -> str:

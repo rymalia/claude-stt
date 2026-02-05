@@ -52,6 +52,14 @@ class STTDaemon:
         self._transcribe_thread: Optional[threading.Thread] = None
         self._logger = logging.getLogger(__name__)
 
+        # UI callbacks (set by menubar when active)
+        self._ui_on_recording_start: Optional[callable] = None
+        self._ui_on_recording_stop: Optional[callable] = None
+        self._ui_on_transcription_complete: Optional[callable] = None
+
+        # Reference to menubar app for signal handling
+        self._menubar_app: Optional[object] = None
+
     def _init_components(self) -> bool:
         """Initialize all components.
 
@@ -140,12 +148,24 @@ class STTDaemon:
                 self._logger.info("No speech detected")
                 if self.config.sound_effects:
                     play_sound("warning")
+                # Notify UI even on empty result
+                if self._ui_on_transcription_complete:
+                    try:
+                        self._ui_on_transcription_complete()
+                    except Exception:
+                        self._logger.debug("UI callback failed", exc_info=True)
                 continue
 
             display_text = text[:100] + "..." if len(text) > 100 else text
             self._logger.info("Transcribed: %s", display_text)
             if not output_text(text, window_info, self.config):
                 self._logger.warning("Failed to output transcription")
+            # Notify UI
+            if self._ui_on_transcription_complete:
+                try:
+                    self._ui_on_transcription_complete()
+                except Exception:
+                    self._logger.debug("UI callback failed", exc_info=True)
 
     def _on_recording_start(self):
         """Called when recording should start."""
@@ -164,6 +184,12 @@ class STTDaemon:
                 self._logger.info("Recording started")
                 if self.config.sound_effects:
                     play_sound("start")
+                # Notify UI
+                if self._ui_on_recording_start:
+                    try:
+                        self._ui_on_recording_start()
+                    except Exception:
+                        self._logger.debug("UI callback failed", exc_info=True)
             else:
                 self._logger.error("Audio recorder failed to start")
                 self._recording = False
@@ -189,6 +215,12 @@ class STTDaemon:
             self._logger.info("Recording stopped (%.1fs)", elapsed)
             if self.config.sound_effects:
                 play_sound("stop")
+            # Notify UI
+            if self._ui_on_recording_stop:
+                try:
+                    self._ui_on_recording_stop()
+                except Exception:
+                    self._logger.debug("UI callback failed", exc_info=True)
 
         # Transcribe outside the lock
         if audio is not None and len(audio) > 0:
@@ -244,6 +276,13 @@ class STTDaemon:
         def shutdown(signum, frame):
             self._logger.info("Shutting down...")
             self._running = False
+            # If running with menubar, need to quit rumps event loop
+            if self._menubar_app is not None:
+                try:
+                    import rumps
+                    rumps.quit_application()
+                except Exception:
+                    pass
 
         def toggle_recording(signum, frame):
             if self._recording:
@@ -263,13 +302,63 @@ class STTDaemon:
         except Exception:
             self._logger.debug("Signal handlers unavailable", exc_info=True)
 
-        # Main loop
+        # Choose main loop based on config and platform
         try:
-            while self._running:
-                self._check_max_recording_time()
-                time.sleep(0.1)
+            if self.config.effective_menu_bar():
+                self._run_with_menubar()
+            else:
+                self._run_headless()
         finally:
             self.stop()
+
+    def _run_headless(self):
+        """Run the daemon without menu bar UI.
+
+        This is the original main loop - a simple sleep/check loop.
+        Used on Linux, Windows, or when menu bar is disabled.
+        """
+        self._logger.info("Running in headless mode")
+        while self._running:
+            self._check_max_recording_time()
+            time.sleep(0.1)
+
+    def _run_with_menubar(self):
+        """Run the daemon with macOS menu bar UI.
+
+        Uses rumps to show a status icon in the menu bar.
+        The rumps event loop replaces the simple sleep loop.
+        """
+        try:
+            from .menubar import STTMenuBar
+        except ImportError:
+            self._logger.warning("rumps not available, falling back to headless mode")
+            self._run_headless()
+            return
+
+        self._logger.info("Running with menu bar UI")
+
+        try:
+            app = STTMenuBar(self)
+            self._menubar_app = app  # Store for signal handler
+
+            # Wire up UI callbacks
+            self._ui_on_recording_start = app.on_recording_start
+            self._ui_on_recording_stop = app.on_recording_stop
+            self._ui_on_transcription_complete = app.on_transcription_complete
+
+            # Start the timer for max recording time checks
+            app.start_timer()
+
+            # Run rumps event loop (blocks until quit)
+            app.run()
+        except Exception:
+            self._logger.exception("Menu bar failed, falling back to headless mode")
+            # Clear callbacks since menubar is gone
+            self._menubar_app = None
+            self._ui_on_recording_start = None
+            self._ui_on_recording_stop = None
+            self._ui_on_transcription_complete = None
+            self._run_headless()
 
     def stop(self):
         """Stop the daemon."""

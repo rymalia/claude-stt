@@ -77,13 +77,14 @@ def _check_writable(plugin_root: Path) -> bool:
     return False
 
 
-def _platform_extra() -> str | None:
+def _platform_extras() -> list[str]:
+    """Return platform-specific extras to install."""
     system = platform.system()
     if system == "Darwin":
-        return "macos"
+        return ["macos", "menubar"]  # pyobjc + rumps for menu bar icon
     if system == "Windows":
-        return "windows"
-    return None
+        return ["windows"]
+    return []
 
 
 def _check_pip(python_path: Path) -> bool:
@@ -169,10 +170,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     uv = _check_uv()
-    extras = []
-    platform_extra = _platform_extra()
-    if platform_extra:
-        extras.append(platform_extra)
+    extras = _platform_extras()
     if args.with_whisper:
         extras.append("whisper")
     if args.dev:

@@ -36,6 +36,7 @@ print(f'  Model: {config.moonshine_model if config.engine == \"moonshine\" else 
 print(f'  Output: {config.output_mode}')
 print(f'  Sound effects: {config.sound_effects}')
 print(f'  Max recording: {config.max_recording_seconds}s')
+print(f'  Menu bar: {config.menu_bar} (macOS only)')
 "
 ```
 (Replace `python3` with `python` if that's what was detected)
@@ -47,6 +48,7 @@ Options:
 - Mode ("push-to-talk" or "toggle")
 - Engine ("moonshine" or "whisper")
 - Sound effects (on/off)
+- Menu bar (on/off, macOS only) - show status icon in menu bar
 
 ### Step 4: Update configuration
 
@@ -78,3 +80,4 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/exec.py -m claude_stt.daemon start --backg
 | output_mode | "auto", "injection", "clipboard" | How to output text |
 | sound_effects | true, false | Play audio feedback |
 | max_recording_seconds | 1-600 | Maximum recording duration |
+| menu_bar | true, false | Show status icon in menu bar (macOS only) |
